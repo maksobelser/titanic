@@ -5,23 +5,21 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 sns.set(style="darkgrid")
 
-import string
 import warnings
 warnings.filterwarnings('ignore')
 seed = 42
 
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler
-from sklearn.metrics import roc_curve, auc
 from sklearn.model_selection import StratifiedKFold
 
 # podatki
 
-df_test = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\test.csv')
+# df_test = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\test.csv')
 df_train = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\train.csv')
 
 df_train.name = 'Training Set'
-df_test.name = 'Test set'
+# df_test.name = 'Test set'
 
 dfs = [df_train, df_test]
 print('Stevilo enot za treniranje = {}'.format(df_train.shape[0]))
@@ -162,8 +160,6 @@ df_train = pd.concat([df_train, *encoded_features[:6]], axis=1)
 drop_cols = ['Deck', 'Embarked', 'Druzina', 'Druzina_kat', 'Survived', 'Parch',
              'PassengerId', 'Pclass', 'Sex', 'SibSp', 'Ticket', 'Name', 'Priimek', 'Cabin']
 
-df_train = df_train.drop(columns=drop_cols)
-
 df_train.info()
 
 X_train = StandardScaler().fit_transform(df_train.drop(columns=drop_cols))
@@ -175,10 +171,10 @@ y_train.shape
 ####### RANDOM FOREST
 
 model_V1 = RandomForestClassifier(criterion='gini',
-                                           n_estimators=1100,
-                                           max_depth=5,
-                                           min_samples_split=4,
-                                           min_samples_leaf=5,
+                                           n_estimators=2000,
+                                           max_depth=8,
+                                           min_samples_split=7,
+                                           min_samples_leaf=7,
                                            max_features='auto',
                                            oob_score=True,
                                            random_state=42,
@@ -196,46 +192,7 @@ leaderboard_model = RandomForestClassifier(criterion='gini',
                                            n_jobs=-1,
                                            verbose=1)
 
-N = 5
-oob = 0
-# probs = pd.DataFrame(np.zeros((len(X_train), N * 2)),
-#                      columns=['Fold_{}_Prob_{}'.format(i, j) for i in range(1, N + 1) for j in range(2)])
-# importances = pd.DataFrame(np.zeros((X_train.shape[1], N)), columns=['Fold_{}'.format(i) for i in range(1, N + 1)],
-#                            index=df_train.columns)
-# fprs, tprs, scores = [], [], []
-
-skf = StratifiedKFold(n_splits=N, random_state=N, shuffle=True)
-
-for fold, (trn_idx, val_idx) in enumerate(skf.split(X_train, y_train), 1):
-    print('Fold {}\n'.format(fold))
-
-    # Fitting the model
-    leaderboard_model.fit(X_train[trn_idx], y_train[trn_idx])
-
-    # Computing Train AUC score
-    # trn_fpr, trn_tpr, trn_thresholds = roc_curve(y_train[trn_idx],
-    #                                              leaderboard_model.predict_proba(X_train[trn_idx])[:, 1])
-    # trn_auc_score = auc(trn_fpr, trn_tpr)
-    # # Computing Validation AUC score
-    # val_fpr, val_tpr, val_thresholds = roc_curve(y_train[val_idx],
-    #                                              leaderboard_model.predict_proba(X_train[val_idx])[:, 1])
-    # val_auc_score = auc(val_fpr, val_tpr)
-    #
-    # scores.append((trn_auc_score, val_auc_score))
-    # fprs.append(val_fpr)
-    # tprs.append(val_tpr)
-
-    # X_test probabilities
-    # probs.loc[:, 'Fold_{}_Prob_0'.format(fold)] = leaderboard_model.predict_proba(X_test)[:, 0]
-    # probs.loc[:, 'Fold_{}_Prob_1'.format(fold)] = leaderboard_model.predict_proba(X_test)[:, 1]
-    # importances.iloc[:, fold - 1] = leaderboard_model.feature_importances_
-
-    oob += leaderboard_model.oob_score_ / N
-    print('Fold {} OOB Score: {}\n'.format(fold, leaderboard_model.oob_score_))
-
-print('Average OOB Score: {}'.format(oob))
-
-def model(model):
+def model_RF(model):
     N = 5
     napovedi = 0
 
@@ -247,10 +204,30 @@ def model(model):
 
         model.fit(X_train[trn_idx], y_train[trn_idx])
 
-        napovedi += leaderboard_model.oob_score_ / N
+        napovedi += model.oob_score_ / N
         print('Fold {} Napoved: {}\n'.format(fold, model.oob_score_))
 
     print('Povprečna napoved: {}'.format(napovedi))
 
-model(model_V1)
+model_RF(model_V1)
+
+######### GRADIENT BOOSTING
+
+lr_list = [0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1]
+
+for learning_rate in lr_list:
+    model_V2 = GradientBoostingClassifier(loss='deviance',
+                                          learning_rate=learning_rate,
+                                          n_estimators=300,
+                                          subsample=0.99,
+                                          criterion='friedman_mse',
+                                          min_samples_leaf=7,
+                                          min_samples_split=5,
+                                          verbose=1,
+                                          random_state=42)
+    model_V2.fit(X_train, y_train)
+
+    print("Learning rate: ", learning_rate)
+    print("Accuracy score (training): {0:.3f}".format(model_V2.score(X_train, y_train)))
+
 
