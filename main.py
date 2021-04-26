@@ -15,11 +15,11 @@ from sklearn.model_selection import StratifiedKFold
 
 # podatki
 
-# df_test = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\test.csv')
+df_test = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\test.csv')
 df_train = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\train.csv')
 
 df_train.name = 'Training Set'
-# df_test.name = 'Test set'
+df_test.name = 'Test set'
 
 dfs = [df_train, df_test]
 print('Stevilo enot za treniranje = {}'.format(df_train.shape[0]))
@@ -124,14 +124,77 @@ for i, feature in enumerate(kat, 1):
 plt.show()
 
 df_train['Druzina'] = df_train['SibSp'] + df_train['Parch'] + 1
-family_map = {1: 'Sam', 2: 'Majhna', 3: 'Majhna', 4: 'Majhna', 5: 'Srednja', 6: 'Srednja', 7: 'Velika', 8: 'Velika', 11: 'Velika'}
-df_train['Druzina_kat'] = df_train['Druzina'].map(family_map)
+pd.unique(df_train['Druzina']).tolist()
+
+druzina_map = {1: 'Sam', 2: 'Majhna', 3: 'Majhna', 4: 'Majhna', 5: 'Srednja', 6: 'Srednja', 7: 'Velika', 8: 'Velika', 9: 'Velika',
+               10: 'Velika', 11: 'Velika', 12: 'Ogromna', 13: 'Ogromna', 14: 'Ogromna', 15: 'Ogromna', 18: 'Ogromna'}
+df_train['Druzina_kat'] = df_train['Druzina'].map(druzina_map)
 
 df_train['Priimek'] = df_train['Name'].str.split(', ', expand=True)[0]
-100000/len(np.unique(df_train['Priimek'].tolist()))
+len(np.unique(df_train['Priimek'].tolist()))/100000
 
 # koliko % jih lahko pogrupiram pri ticket
 1 - len(np.unique(df_train['Ticket'].tolist()))/(100000 - sum(df_train['Ticket'].isnull()))
+
+#################################### PODATKI HITREJE
+
+df_test = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\test.csv')
+df_train = pd.read_csv(r'D:\1_Faks\2_Uporabna statistika Msc\Strojno ucenje\DN\1_DN\tabular-playground-series-apr-2021\train.csv')
+
+def data_modify(data_vhod):
+    data = data_vhod
+    data['Age'] = data.groupby(['Sex', 'Pclass'])['Age'].apply(lambda x: x.fillna(x.median()))
+    data['Fare'] = data.groupby(['Sex', 'Pclass'])['Fare'].apply(lambda x: x.fillna(x.mean()))
+    data['Deck'] = data['Cabin'].apply(lambda s: s[0] if pd.notnull(s) else 'M')
+
+    # katogroije
+    data['Fare'] = pd.qcut(data['Fare'], 13)
+    data['Age'] = pd.qcut(data['Age'], 10)
+    data['Druzina'] = data['SibSp'] + data['Parch'] + 1
+    druzina_map = {1: 'Sam', 2: 'Majhna', 3: 'Majhna',
+                   4: 'Majhna', 5: 'Srednja', 6: 'Srednja',
+                   7: 'Velika', 8: 'Velika', 9: 'Velika',10: 'Velika', 11: 'Velika',
+                   12: 'Ogromna', 13: 'Ogromna', 14: 'Ogromna', 15: 'Ogromna', 18: 'Ogromna'}
+    data['Druzina_kat'] = data['Druzina'].map(druzina_map)
+    data['Priimek'] = data['Name'].str.split(', ', expand=True)[0]
+
+    ne_numericne = ['Embarked', 'Sex', 'Deck', 'Druzina_kat', 'Age', 'Fare']
+
+    for feature in ne_numericne:
+        data[feature] = LabelEncoder().fit_transform(data[feature])
+
+    # one-hot encoding
+    kategoricne = ['Pclass', 'Sex', 'Deck', 'Embarked', 'Druzina_kat']
+    encoded_features = []
+
+    for feature in kategoricne:
+        encoded_feat = OneHotEncoder().fit_transform(data[feature].values.reshape(-1, 1)).toarray()
+        n = data[feature].nunique()
+        cols = ['{}_{}'.format(feature, n) for n in range(1, n + 1)]
+        encoded_df = pd.DataFrame(encoded_feat, columns=cols)
+        encoded_df.index = data.index
+        encoded_features.append(encoded_df)
+
+    data = pd.concat([data, *encoded_features[:6]], axis=1)
+    return(data)
+
+df_test.info()
+
+df_test = data_modify(df_test)
+df_train = data_modify(df_train)
+
+drop_cols = ['Deck', 'Embarked', 'Druzina', 'Druzina_kat', 'Survived', 'Parch',
+             'PassengerId', 'Pclass', 'Sex', 'SibSp', 'Ticket', 'Name', 'Priimek', 'Cabin']
+
+df_train.info()
+
+X_train = StandardScaler().fit_transform(df_train.drop(columns=drop_cols))
+y_train = df_train['Survived'].values
+
+drop_cols_test = ['Deck', 'Embarked', 'Druzina', 'Druzina_kat', 'Parch',
+                  'PassengerId', 'Pclass', 'Sex', 'SibSp', 'Ticket', 'Name', 'Priimek', 'Cabin']
+
+X_test = StandardScaler().fit_transform(df_test.drop(columns=drop_cols_test))
 
 #################################### MODEL
 
@@ -164,9 +227,6 @@ df_train.info()
 
 X_train = StandardScaler().fit_transform(df_train.drop(columns=drop_cols))
 y_train = df_train['Survived'].values
-
-X_train.shape
-y_train.shape
 
 ####### RANDOM FOREST
 
@@ -229,5 +289,39 @@ for learning_rate in lr_list:
 
     print("Learning rate: ", learning_rate)
     print("Accuracy score (training): {0:.3f}".format(model_V2.score(X_train, y_train)))
+
+
+drop_cols = ['Deck', 'Embarked', 'Druzina', 'Druzina_kat', 'Survived', 'Parch',
+             'PassengerId', 'Pclass', 'Sex', 'SibSp', 'Ticket', 'Name', 'Priimek', 'Cabin']
+
+model = model_V2
+def model_GB(model):
+    N = 5
+    napovedi = 0
+
+    skf = StratifiedKFold(n_splits=N, random_state=N, shuffle=True)
+
+    for fold, (trn_idx, val_idx) in enumerate(skf.split(X_train, y_train), 1):
+        # kje smo
+        print('Fold {}\n'.format(fold))
+
+        model.fit(X_train[trn_idx], y_train[trn_idx])
+
+        napovedi += model.score(X_train, y_train) / N
+        print('Fold {} Napoved: {}\n'.format(fold, model.score(X_train, y_train)))
+
+    print('Povprečna napoved: {}'.format(napovedi))
+
+model_V2 = GradientBoostingClassifier(loss='deviance',
+                                      learning_rate=0.95,
+                                      n_estimators=300,
+                                      subsample=0.99,
+                                      criterion='friedman_mse',
+                                      min_samples_leaf=10,
+                                      min_samples_split=9,
+                                      verbose=1,
+                                      random_state=42)
+
+model_GB(model_V2)
 
 
